@@ -4,6 +4,7 @@ import streamlit as st
 import requests
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 import locale
 
 # Configurer la page Streamlit
@@ -31,7 +32,7 @@ mois = [
 # Selectbox pour choisir le mois
 st.sidebar.header("Filtrer par mois")
 selected_month = st.sidebar.selectbox(
-    "Choisissez un mois", options=list(range(1, 13)), format_func=lambda x: mois[x - 1]
+    "Choisissez un mois", options=list(range(3, 13)), format_func=lambda x: mois[x - 1]
 )
 
 # API Endpoints
@@ -42,7 +43,6 @@ conversion_rate_url = f"http://127.0.0.1:8000/sales/conversion_rate/{selected_mo
 sales_data = fetch_data(sales_url)
 conversion_rate_data = fetch_data(conversion_rate_url)
 
-
 def get_top_product_by_month(month: int):
     try:
         url = f"http://127.0.0.1:8000/top-product/{month}"
@@ -52,7 +52,6 @@ def get_top_product_by_month(month: int):
     except requests.exceptions.RequestException as e:
         st.error(f"Erreur lors de la récupération des données : {e}")
         return None
-
 
 # Récupérer les informations du produit le plus vendu
 top_product_data = get_top_product_by_month(selected_month)
@@ -69,7 +68,6 @@ if top_product_data:
         st.write("Aucun produit n'a été vendu ce mois-ci.")
 else:
     st.write("Impossible de récupérer les données.")
-
 
 # Si les données sont disponibles
 if sales_data and conversion_rate_data:
@@ -91,24 +89,28 @@ if sales_data and conversion_rate_data:
 
         # Graphique des ventes quotidiennes avec évolution
         if "data" in sales_data and isinstance(sales_data["data"], list):
-
             daily_sales = pd.DataFrame(sales_data["data"])
 
             if not daily_sales.empty and "day" in daily_sales.columns and "total_sales" in daily_sales.columns and "percentage_change_day" in daily_sales.columns:
-
-                # Définir l'index de manière appropriée
-                daily_sales = daily_sales.set_index("day")
-
                 # Tracer le graphique des ventes
-                st.line_chart(daily_sales["total_sales"], use_container_width=True)
-
-                # Afficher l'évolution des ventes sous forme de texte ou d'autres graphiques si nécessaire
-                st.write("Évolution des ventes par rapport au jour précédent :")
-                st.write(daily_sales[["percentage_change_day"]])
-
-
+                fig = px.line(
+                    daily_sales,
+                    x="day",
+                    y="total_sales",
+                    title="Ventes quotidiennes",
+                    labels={"day": "Jour", "total_sales": "Ventes (€)", "percentage_change_day": "Chiffre %"},
+                    hover_data={"day": False, "total_sales": True, "percentage_change_day": True}
+                    # Afficher uniquement 'total_sales' et 'percentage_change_day' au survol
+                )
+                fig.update_traces(line=dict(color="royalblue", width=3))
+                fig.update_layout(
+                    paper_bgcolor="rgb(240,240,255)",
+                    plot_bgcolor="rgba(0,0,0,0)",
+                )
+                st.plotly_chart(fig, use_container_width=True)
             else:
                 st.warning("Les données des ventes quotidiennes sont manquantes ou mal formatées.")
+
         else:
             st.warning("Les données des ventes ne sont pas disponibles.")
 
@@ -129,10 +131,19 @@ if sales_data and conversion_rate_data:
         if "daily_conversion_rates" in conversion_rate_data and isinstance(conversion_rate_data["daily_conversion_rates"], list):
             daily_conversion_rates = pd.DataFrame(conversion_rate_data["daily_conversion_rates"])
             if not daily_conversion_rates.empty and "day" in daily_conversion_rates.columns and "conversion_rate" in daily_conversion_rates.columns:
-                st.line_chart(
-                    daily_conversion_rates.set_index("day")["conversion_rate"],
-                    use_container_width=True,
+                fig = px.line(
+                    daily_conversion_rates,
+                    x="day",
+                    y="conversion_rate",
+                    title="Taux de conversion quotidiens",
+                    labels={"day": "Jour", "conversion_rate": "Taux de conversion (%)"},
                 )
+                fig.update_traces(line=dict(color="seagreen", width=3))
+                fig.update_layout(
+                    paper_bgcolor="rgb(240,255,240)",
+                    plot_bgcolor="rgba(0,0,0,0)",
+                )
+                st.plotly_chart(fig, use_container_width=True)
             else:
                 st.warning("Les données des taux de conversion quotidiens sont manquantes ou mal formatées.")
         else:
@@ -142,75 +153,25 @@ if sales_data and conversion_rate_data:
 else:
     st.error("Les données ne sont pas disponibles.")
 
-
-def get_sales_volume_by_month(month: int):
-    try:
-        url = f"http://127.0.0.1:8000/sales/volume/{month}"
-        response = requests.get(url)
-        response.raise_for_status()
-        return response.json()
-    except requests.exceptions.RequestException as e:
-        st.error(f"Erreur lors de la récupération des données : {e}")
-        return None
-
-sales_volume_data = get_sales_volume_by_month(selected_month)
-
-print(sales_volume_data)
-
+# Classement des produits
+sales_volume_data = fetch_data(f"http://127.0.0.1:8000/sales/volume/{selected_month}")
 if sales_volume_data:
     st.title(f"Classement des Produits par Volume de Ventes - {mois[selected_month - 1]}")
-
-    if sales_volume_data:
-        # Créer un DataFrame à partir des données reçues
-        sales_df = pd.DataFrame(sales_volume_data.items(), columns=["Produit", "Volume de ventes"])
-
-        sales_df = sales_df.sort_values("Volume de ventes", ascending=False)
-
-        # Affichage du graphique à barres
-        st.bar_chart(sales_df.set_index("Produit")["Volume de ventes"],horizontal=True, use_container_width=True)
-
-        # Affichage des données sous forme de tableau pour plus de détails
-        st.write("Détails des produits et volumes de ventes :")
-        st.dataframe(sales_df, hide_index=True)
-    else:
-        st.write("Aucun produit n'a été vendu ce mois-ci.")
-else:
-    st.write("Impossible de récupérer les données.")
-
-
-with st.container():
-    # Sélecteur de catégorie
-    category = st.selectbox(
-        "Sélectionnez une catégorie",
-        options=["Manager", "Sales Agent", "Account"]
+    sales_df = pd.DataFrame(sales_volume_data.items(), columns=["Produit", "Volume de ventes"])
+    sales_df = sales_df.sort_values("Volume de ventes", ascending=False)
+    fig = px.bar(
+        sales_df,
+        x="Produit",
+        y="Volume de ventes",
+        title="Volume de ventes par produit",
+        labels={"Volume de ventes": "Volume de ventes", "Produit": "Produit"},
+        color="Volume de ventes",
+        color_continuous_scale="Viridis",
     )
-
-    # Appel à l'API
-    try:
-        response = requests.get(f"http://127.0.0.1:8000/sales/{category}/{selected_month}")
-        if response.status_code == 200:
-            sales_data = response.json()
-
-            # Conversion des données en DataFrame
-            df = pd.DataFrame(list(sales_data.items()), columns=["Catégorie", "Valeur des ventes"])
-
-
-            locale.setlocale(locale.LC_TIME, 'fr_FR')  # Remplacez par 'fr_FR' pour le français
-
-            month_name = calendar.month_name[selected_month].capitalize()
-            st.subheader(f"Ventes pour {category} en {month_name}")
-            # Affichage du tableau
-
-            # Graphique
-            fig = px.bar(
-                df,
-                x="Catégorie",
-                y="Valeur des ventes",
-                title=f"Statistiques des ventes - {category}",
-                labels={"Valeur des ventes": "Ventes (€)", "Catégorie": "Catégories de produits"}
-            )
-            st.plotly_chart(fig)
-        else:
-            st.error(f"Erreur lors de la récupération des données : {response.status_code}")
-    except Exception as e:
-        st.error(f"Une erreur est survenue : {str(e)}")
+    fig.update_layout(
+        paper_bgcolor="rgb(245,245,255)",
+        plot_bgcolor="rgba(0,0,0,0)",
+    )
+    st.plotly_chart(fig, use_container_width=True)
+else:
+    st.warning("Les données des volumes de ventes sont indisponibles.")
